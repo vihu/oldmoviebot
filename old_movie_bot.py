@@ -3,6 +3,7 @@ Post a message on r/iwatchedanoldmovie with imdb information about the post
 '''
 
 import sqlite3
+import logging
 from time import sleep
 import os.path
 import praw
@@ -10,11 +11,30 @@ import config
 from imdbpie import Imdb
 from create_new_db import create_db
 
-SUBREDDIT = 'oldmoviebottest'
+
+# Constants
+SUBREDDIT = 'iwatchedanoldmovie'
 QUESTIONS = ['watched', 'rewatched']
-REPLY_TEMPLATE = "[Here's the best match from IMDB](http://imdb.com/title/{})"
+REPLY_TEMPLATE = "Hi! I'm a bot! [IMDB Linky](http://imdb.com/title/{})"
 DB_FILE = 'oldmoviebot.db'
 
+# logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+fh = logging.FileHandler('old_movie_bot.log')
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# main methods
 def setup():
     ''' Setup local DB file
     '''
@@ -34,8 +54,15 @@ def main():
 
     subreddit = reddit.subreddit(SUBREDDIT)
     for submission in subreddit.stream.submissions():
-        process_submission(submission)
+        try:
+            process_submission(submission)
+        except Exception as e:
+            logger.error('Error processing {}, {}'.format(submission.id, submission.title))
+            logger.exception(e)
+            sleep(300)
+            continue
 
+# helper methods
 def extract_movie_info(title):
     ''' Extract movie information from the submission title
     Only supports:
@@ -97,17 +124,20 @@ def process_submission(submission):
                 try:
                     data = already_replied(submission.id)
                     if data is None:
-                        print('Replying to: {}'.format(submission.title))
+                        logger.info('Replying to: {}'.format(submission.title))
                         reply_text = REPLY_TEMPLATE.format(title_id)
-                        print('Replying with: {}'.format(reply_text))
+                        logger.info('Replying with: {}'.format(reply_text))
                         submission.reply(reply_text)
-                        print('Updating DB with submission_id {}'.format(submission.id))
+                        logger.info('Updating DB with submission_id {}'.format(submission.id))
                         update_db(submission.id, title_id, movie, reply_text)
+                        # sleep 5 minutes before checking for the next movie
+                        sleep(300)
                     else:
-                        print('Have already replied to {}, {}'.format(submission.id, submission.title))
+                        logger.warning('Have already replied to {}, {}'.format(submission.id, submission.title))
                         continue
-                except praw.objector.APIException:
-                    print('Possible rate limit exception, pausing for some time...')
+                except praw.objector.APIException as e:
+                    logger.error('Possible rate limit exception, pausing for some time...')
+                    logger.exception(e)
                     sleep(300)
                     continue
             # A reply has been made so do not attempt to match other phrases.
