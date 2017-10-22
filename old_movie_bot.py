@@ -10,7 +10,7 @@ import praw
 import config
 from imdbpie import Imdb
 from create_new_db import create_db
-
+from multiprocessing import Process
 
 # Constants
 SUBREDDIT = 'iwatchedanoldmovie'
@@ -55,7 +55,9 @@ def main():
     subreddit = reddit.subreddit(SUBREDDIT)
     for submission in subreddit.stream.submissions():
         try:
-            process_submission(submission)
+            p = Process(target=process_submission, args=(submission, ))
+            p.start()
+            p.join()
         except Exception as e:
             logger.error('Error processing {}, {}'.format(submission.id, submission.title))
             logger.exception(e)
